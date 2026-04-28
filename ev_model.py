@@ -86,15 +86,15 @@ def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
     """
     fleet = _precharge_to_sim_start(fleet)
     total_power   = np.zeros(24)
+    n = len(fleet)
     prev_connected = np.array([
         _is_connected(SIM_START_H, fleet.at[i, 'arrival_h'], fleet.at[i, 'departure_h'])
-        for i in range(N_EV)
+        for i in range(n)
     ], dtype=bool)
-
+    
     for slot in range(24):
         h = (SIM_START_H + slot) % 24
-
-        for i in range(N_EV):
+        for i in range(n):
             arr = fleet.at[i, 'arrival_h']
             dep = fleet.at[i, 'departure_h']
             connected = _is_connected(h, arr, dep)
@@ -130,17 +130,17 @@ def simulate_v2g(fleet: pd.DataFrame, v_pu_profile: np.ndarray,
     """
     fleet = _precharge_to_sim_start(fleet)
     total_power    = np.zeros(24)
+    n = len(fleet)
     prev_connected = np.array([
         _is_connected(SIM_START_H, fleet.at[i, 'arrival_h'], fleet.at[i, 'departure_h'])
-        for i in range(N_EV)
+        for i in range(n)
     ], dtype=bool)
-
+    
     for slot in range(24):
-        h  = (SIM_START_H + slot) % 24
-        v  = v_pu_profile[slot]
+        h = (SIM_START_H + slot) % 24
+        v = v_pu_profile[slot]
         ps = pv_surplus[slot]
-
-        for i in range(N_EV):
+        for i in range(n):
             arr = fleet.at[i, 'arrival_h']
             dep = fleet.at[i, 'departure_h']
             connected = _is_connected(h, arr, dep)
