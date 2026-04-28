@@ -79,40 +79,50 @@ def run_scenario(penetration: float,
     ])
     pv_surplus = get_pv_surplus(pv_sim, base_load_sim)
 
+    def _run_power_flow(ev_profile_kw: np.ndarray) -> tuple:
+        """Run PF across 24 slots; return voltages, loading, ev_kw arrays."""
+        net = build_network(pv_enabled=PV_ENABLED)
+
+        voltages_24h = np.zeros((24, 33))
+        loading_24h  = np.zeros((24, 37))
+        ev_kw_24h    = np.zeros(24)
+
+        for slot in range(24):
+            h_abs = (SIM_START_H + slot) % 24
+
+            base_mw   = _base_load_per_bus(h_abs)              # (32,) MW
+            ev_bus_kw = distribute_ev_load(ev_profile_kw[slot])
+            pv_bus_kw = distribute_pv_output(pv_sim[slot])
+
+            try:
+                update_network(net, base_mw, ev_bus_kw, pv_bus_kw,
+                               pv_enabled=PV_ENABLED)
+                voltages_24h[slot] = get_bus_voltages(net)
+                loading_24h[slot]  = get_line_loading(net)
+            except pp.powerflow.LoadflowNotConverged:
+                print(f"  [WARN] Power flow did not converge at slot {slot} "
+                      f"({h_abs:02d}:00) — filling with NaN")
+                voltages_24h[slot] = np.nan
+                loading_24h[slot]  = np.nan
+
+            ev_kw_24h[slot] = ev_profile_kw[slot]
+
+        return voltages_24h, loading_24h, ev_kw_24h
+
     if strategy == 'G2V':
-        ev_total_kw = simulate_g2v(fleet)          # shape (24,)
+        ev_total_kw = simulate_g2v(fleet)
+        voltages_24h, loading_24h, ev_kw_24h = _run_power_flow(ev_total_kw)
     else:
-        # V2G needs a voltage profile as input — use a flat 1.0 pu for the
-        # first iteration; a real implementation would iterate (see note below)
-        v_flat = np.ones(24)
-        ev_total_kw = simulate_v2g(fleet, v_flat, pv_surplus)
+        # Pass 1: run G2V to get a realistic voltage profile
+        ev_g2v_kw = simulate_g2v(fleet.copy())
+        voltages_ref, _, _ = _run_power_flow(ev_g2v_kw)
+        v_profile = np.nanmean(voltages_ref, axis=1)
+        if np.isnan(v_profile).all():
+            v_profile = np.ones(24)
 
-    # ── Run power flow for each time slot ─────────────────────────────────────
-    net = build_network(pv_enabled=PV_ENABLED)
-
-    voltages_24h = np.zeros((24, 33))      # bus voltages  [pu]
-    loading_24h  = np.zeros((24, 37))      # line loading  [%]
-    ev_kw_24h    = np.zeros(24)            # total EV power[kW]
-
-    for slot in range(24):
-        h_abs = (SIM_START_H + slot) % 24
-
-        base_mw   = _base_load_per_bus(h_abs)                    # (32,) MW
-        ev_bus_kw = distribute_ev_load(ev_total_kw[slot])        # (32,) kW
-        pv_bus_kw = distribute_pv_output(pv_sim[slot])           # (32,) kW
-
-        try:
-            update_network(net, base_mw, ev_bus_kw, pv_bus_kw,
-                           pv_enabled=PV_ENABLED)
-            voltages_24h[slot] = get_bus_voltages(net)
-            loading_24h[slot]  = get_line_loading(net)
-        except pp.powerflow.LoadflowNotConverged:
-            print(f"  [WARN] Power flow did not converge at slot {slot} "
-                  f"({h_abs:02d}:00) — filling with NaN")
-            voltages_24h[slot] = np.nan
-            loading_24h[slot]  = np.nan
-
-        ev_kw_24h[slot] = ev_total_kw[slot]
+        # Pass 2: run V2G with the measured voltage profile
+        ev_total_kw = simulate_v2g(fleet.copy(), v_profile, pv_surplus)
+        voltages_24h, loading_24h, ev_kw_24h = _run_power_flow(ev_total_kw)
 
     return {
         'penetration' : penetration,

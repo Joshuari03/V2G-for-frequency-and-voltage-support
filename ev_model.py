@@ -162,11 +162,16 @@ def simulate_v2g(fleet: pd.DataFrame, v_pu_profile: np.ndarray,
             elif v < 0.97 and soc > SOC_MIN + 0.1:
                 p = -P_DISCHARGE
                 fleet.at[i, 'soc_current'] -= P_DISCHARGE / (E_BAT * EFFICIENCY)
-            elif ps > 0 and soc < SOC_MAX:
-                p = min(P_CHARGE, ps / N_EV * 10)
-                fleet.at[i, 'soc_current'] += (p * EFFICIENCY) / E_BAT
             else:
-                p = 0
+                # Within acceptable voltage band: keep normal charging behavior
+                if soc < SOC_MAX:
+                    if ps > 0:
+                        p = min(P_CHARGE, ps / N_EV * 10)
+                    else:
+                        p = P_CHARGE
+                    fleet.at[i, 'soc_current'] += (p * EFFICIENCY) / E_BAT
+                else:
+                    p = 0
 
             fleet.at[i, 'soc_current'] = np.clip(
                 fleet.at[i, 'soc_current'], SOC_MIN, SOC_MAX
