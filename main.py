@@ -208,23 +208,23 @@ if __name__ == "__main__":
 
     # ── Save metrics summary ──────────────────────────────────────────────────
     df_metrics = pd.DataFrame(all_metrics)
-    df_metrics.to_csv("results/metrics_summary_2500kW.csv", index=False)
-    print("\n\nMetrics saved → results/metrics_summary_2500kW.csv")
+    df_metrics.to_csv("results/metrics_summary_2500kW_min40soc.csv", index=False)
+    print("\n\nMetrics saved → results/metrics_summary_2500kW_min40soc.csv")
     print(df_metrics.to_string(index=False))
 
     # ── Save per-scenario voltage timeseries ──────────────────────────────────
     for r in all_results:
-        fname = (f"results/voltages_"
-             f"EV{int(r['penetration']*100)}_"
-             f"{r['strategy']}_"
-             f"PV{'ON' if r['pv_enabled'] else 'OFF'}_2500kW.csv")
-        df_v = pd.DataFrame(
+           fname = (f"results/voltages_"
+               f"EV{int(r['penetration']*100)}_"
+               f"{r['strategy']}_"
+               f"PV{'ON' if r['pv_enabled'] else 'OFF'}_2500kW_min40soc.csv")
+           df_v = pd.DataFrame(
             r['voltages'],
             columns=[f'bus_{i}' for i in range(33)]
         )
-        df_v.insert(0, 'slot', range(24))
-        df_v.insert(1, 'hour', [(SIM_START_H + s) % 24 for s in range(24)])
-        df_v.to_csv(fname, index=False)
+           df_v.insert(0, 'slot', range(24))
+           df_v.insert(1, 'hour', [(SIM_START_H + s) % 24 for s in range(24)]) 
+           df_v.to_csv(fname, index=False)
 
     print("\nVoltage CSVs saved → results/")
 
