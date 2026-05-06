@@ -21,13 +21,19 @@ import pvlib
 import matplotlib.pyplot as plt
 
 # ── Location: Xi'an, Shaanxi, China ──────────────────────────────────────────
-LATITUDE   =  34.3
+LATITUDE   = 34.3
 LONGITUDE  = 108.9
-ALTITUDE   = 400       # metres above sea level
-TIMEZONE   = 'Asia/Shanghai'
+ALTITUDE   = 400       # meters above sea level
+TIMEZONE   = "Asia/Shanghai"
+
+# ── Location: Shenzhen, Guangdong, China (reference only) ───────────────────
+#LATITUDE   = 22.5431
+#LONGITUDE  = 114.0579
+#ALTITUDE   = 0         # meters above sea level (approx. coastal)
+#TIMEZONE   = "Asia/Shanghai"
 
 # ── PV system parameters ──────────────────────────────────────────────────────
-PV_TOTAL_KW    = 500.0    # total installed capacity across the network [kW]
+PV_TOTAL_KW    = 2500.0    # total installed capacity across the network [kW]
 PANEL_EFF      = 0.20     # panel efficiency (mono-Si, ~20%)
 PR             = 0.80     # performance ratio (inverter + wiring + temp losses)
 # Effective yield factor: W_output / W_irradiance = efficiency × PR
@@ -139,12 +145,12 @@ if __name__ == "__main__":
     ax.axhline(0, color='black', linewidth=0.5)
     ax.set_xlabel('Hour of day')
     ax.set_ylabel('PV Output [kW]')
-    ax.set_title(f'PV Generation Profile — Xi\'an {SIM_DATE} (total {PV_TOTAL_KW:.0f} kW installed)')
+    ax.set_title(f"PV Generation Profile - Xian {SIM_DATE} (total {PV_TOTAL_KW:.0f} kW installed)")
     ax.set_xticks(hours)
     ax.set_xticklabels([f'{h:02d}:00' for h in hours], rotation=45, ha='right')
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig('results/pv_profile.png', dpi=150)
+    plt.savefig("results/pv_profile_2500kW.png", dpi=150)
     plt.show()
-    print("\nPlot saved → results/pv_profile.png")
+    print("\nPlot saved -> results/pv_profile_2500kW.png")

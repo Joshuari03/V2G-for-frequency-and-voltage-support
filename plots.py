@@ -3,13 +3,13 @@ plots.py
 
 All visualizations for the V2G simulation report.
 Figures produced:
-- ev_load_curves.png
-- voltage_profiles.png
-- voltage_heatmap.png
-- metrics_barchart.png
-- pv_and_load.png
-- total_load_curves.png
-- ev_delta.png
+- ev_load_curves_2500kW.png
+- voltage_profiles_2500kW.png
+- voltage_heatmap_2500kW.png
+- metrics_barchart_2500kW.png
+- pv_and_load_2500kW.png
+- total_load_curves_2500kW.png
+- ev_delta_2500kW.png
 
 All figures saved to results/.
 """
@@ -113,11 +113,11 @@ def plot_ev_load_curves(results: list, sim_start_h: int = 6):
         ax.set_ylabel("EV fleet power [kW]")
         ax.legend()
 
-    fig.suptitle("EV Fleet Load Profiles - G2V vs V2G", fontsize=13, y=1.02)
+    fig.suptitle("EV Fleet Load Profiles - G2V vs V2G (PV 2500 kW)", fontsize=13, y=1.02)
     plt.tight_layout()
-    plt.savefig("results/ev_load_curves.png", bbox_inches="tight")
+    plt.savefig("results/ev_load_curves_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/ev_load_curves.png")
+    print("  Saved: results/ev_load_curves_2500kW.png")
 
 
 # Figure 2: Voltage profiles on worst bus
@@ -155,11 +155,11 @@ def plot_voltage_profiles(results: list, sim_start_h: int = 6):
         ax.set_ylim(0.88, 1.06)
         ax.legend(fontsize=8)
 
-    fig.suptitle("Voltage Profile on Worst Bus - G2V vs V2G", fontsize=13, y=1.02)
+    fig.suptitle("Voltage Profile on Worst Bus - G2V vs V2G (PV 2500 kW)", fontsize=13, y=1.02)
     plt.tight_layout()
-    plt.savefig("results/voltage_profiles.png", bbox_inches="tight")
+    plt.savefig("results/voltage_profiles_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/voltage_profiles.png")
+    print("  Saved: results/voltage_profiles_2500kW.png")
 
 
 # Figure 3: Voltage heatmap
@@ -191,10 +191,10 @@ def plot_voltage_heatmaps(results: list, sim_start_h: int = 6):
     fig.subplots_adjust(right=0.88)
     cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
     fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap=cmap), cax=cbar_ax, label="Voltage [pu]")
-    fig.suptitle("Voltage Heatmap - Bus x Hour (dashed = 0.95 pu violation)", fontsize=12)
-    plt.savefig("results/voltage_heatmap.png", bbox_inches="tight")
+    fig.suptitle("Voltage Heatmap - Bus x Hour (PV 2500 kW)", fontsize=12)
+    plt.savefig("results/voltage_heatmap_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/voltage_heatmap.png")
+    print("  Saved: results/voltage_heatmap_2500kW.png")
 
 
 # Figure 4: Metrics bar chart
@@ -241,11 +241,11 @@ def plot_metrics_barchart(results: list):
         mpatches.Patch(facecolor=COLORS_STRAT["V2G"], label="V2G"),
     ]
     fig.legend(handles=legend_els, loc="upper center", ncol=2, fontsize=10, bbox_to_anchor=(0.5, 1.02))
-    fig.suptitle("Summary Metrics - All Scenarios", fontsize=13, y=1.06)
+    fig.suptitle("Summary Metrics - All Scenarios (PV 2500 kW)", fontsize=13, y=1.06)
     plt.tight_layout()
-    plt.savefig("results/metrics_barchart.png", bbox_inches="tight")
+    plt.savefig("results/metrics_barchart_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/metrics_barchart.png")
+    print("  Saved: results/metrics_barchart_2500kW.png")
 
 
 # Figure 5: PV output vs base load
@@ -274,12 +274,12 @@ def plot_pv_and_load(pv_sim: np.ndarray, base_load_total_mw: np.ndarray, sim_sta
     ax.set_xticklabels(xlabels[::2], rotation=45, ha="right")
     ax.set_xlabel("Hour")
     ax.set_ylabel("Power [kW]")
-    ax.set_title("PV Generation vs Base Load - Xian, 2024-06-21")
+    ax.set_title("PV Generation vs Base Load - Xian, 2024-06-21 (PV 2500 kW)")
     ax.legend()
     plt.tight_layout()
-    plt.savefig("results/pv_and_load.png", bbox_inches="tight")
+    plt.savefig("results/pv_and_load_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/pv_and_load.png")
+    print("  Saved: results/pv_and_load_2500kW.png")
 
 
 # Figure 6: Total load curves (base + EV)
@@ -333,11 +333,11 @@ def plot_total_load_curves(results: list, base_load_total_mw: np.ndarray, sim_st
         ax.set_ylabel("Total network load [kW]")
         ax.legend(fontsize=8)
 
-    fig.suptitle("Total Load Curve - Base Load + EV (G2V vs V2G)", fontsize=13, y=1.02)
+    fig.suptitle("Total Load Curve - Base Load + EV (G2V vs V2G, PV 2500 kW)", fontsize=13, y=1.02)
     plt.tight_layout()
-    plt.savefig("results/total_load_curves.png", bbox_inches="tight")
+    plt.savefig("results/total_load_curves_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/total_load_curves.png")
+    print("  Saved: results/total_load_curves_2500kW.png")
 
 
 # Figure 7: EV delta (charge/discharge contribution)
@@ -389,11 +389,11 @@ def plot_ev_delta(results: list, sim_start_h: int = 6):
         ax.set_ylabel("EV power [kW] (negative = injection)")
         ax.legend(fontsize=8)
 
-    fig.suptitle("EV Contribution per Slot - G2V (charge only) vs V2G", fontsize=12, y=1.02)
+    fig.suptitle("EV Contribution per Slot - G2V vs V2G (PV 2500 kW)", fontsize=12, y=1.02)
     plt.tight_layout()
-    plt.savefig("results/ev_delta.png", bbox_inches="tight")
+    plt.savefig("results/ev_delta_2500kW.png", bbox_inches="tight")
     plt.close()
-    print("  Saved: results/ev_delta.png")
+    print("  Saved: results/ev_delta_2500kW.png")
 
 
 # Master call

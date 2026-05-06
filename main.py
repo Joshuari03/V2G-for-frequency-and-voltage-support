@@ -208,16 +208,16 @@ if __name__ == "__main__":
 
     # ── Save metrics summary ──────────────────────────────────────────────────
     df_metrics = pd.DataFrame(all_metrics)
-    df_metrics.to_csv('results/metrics_summary.csv', index=False)
-    print("\n\nMetrics saved → results/metrics_summary.csv")
+    df_metrics.to_csv("results/metrics_summary_2500kW.csv", index=False)
+    print("\n\nMetrics saved → results/metrics_summary_2500kW.csv")
     print(df_metrics.to_string(index=False))
 
     # ── Save per-scenario voltage timeseries ──────────────────────────────────
     for r in all_results:
         fname = (f"results/voltages_"
-                 f"EV{int(r['penetration']*100)}_"
-                 f"{r['strategy']}_"
-                 f"PV{'ON' if r['pv_enabled'] else 'OFF'}.csv")
+             f"EV{int(r['penetration']*100)}_"
+             f"{r['strategy']}_"
+             f"PV{'ON' if r['pv_enabled'] else 'OFF'}_2500kW.csv")
         df_v = pd.DataFrame(
             r['voltages'],
             columns=[f'bus_{i}' for i in range(33)]
