@@ -12,6 +12,8 @@ SOC_MIN      = 0.20      # minimum SoC to protect battery
 SOC_MAX      = 0.95      # maximum SoC (avoid 100 %)
 EFFICIENCY   = 0.92      # round-trip charge/discharge efficiency
 SIM_START_H  = 6         # simulation starts at 06:00
+WORK_START_H = 9         # work connection window start
+WORK_END_H   = 17        # work connection window end (exclusive)
 
 
 def generate_fleet(seed=42):
@@ -28,11 +30,15 @@ def generate_fleet(seed=42):
     arrival   = np.clip(arrival,   15.0, 23.0)
     departure = np.clip(departure,  6.0, 10.0)
 
+    commute_kwh_total = (SOC_MAX - soc_arrival) * E_BAT
+    commute_kwh_leg = commute_kwh_total / 2.0
+
     fleet = pd.DataFrame({
-        'arrival_h'  : arrival,
-        'departure_h': departure,
-        'soc_arrival': soc_arrival,
-        'soc_current': soc_arrival.copy()
+        "arrival_h": arrival,
+        "departure_h": departure,
+        "soc_arrival": soc_arrival,
+        "soc_current": soc_arrival.copy(),
+        "commute_kwh_leg": commute_kwh_leg,
     })
     return fleet
 
@@ -73,6 +79,18 @@ def _is_connected(h: float, arr: float, dep: float) -> bool:
     return (h >= arr) or (h < dep)
 
 
+def _is_connected_work(h: float) -> bool:
+    """Return True if the EV is plugged in during the work window."""
+    return WORK_START_H <= h < WORK_END_H
+
+
+def _apply_commute_energy(fleet: pd.DataFrame, i: int, kwh: float) -> None:
+    """Apply commute energy use to a single EV's state of charge."""
+    soc = fleet.at[i, "soc_current"]
+    soc -= kwh / E_BAT
+    fleet.at[i, "soc_current"] = float(np.clip(soc, SOC_MIN, SOC_MAX))
+
+
 def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
     """
     Uncontrolled G2V: every EV charges at full power as soon as it arrives.
@@ -87,40 +105,45 @@ def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
     fleet = _precharge_to_sim_start(fleet)
     total_power   = np.zeros(24)
     n = len(fleet)
-    prev_connected = np.array([
-        _is_connected(SIM_START_H, fleet.at[i, 'arrival_h'], fleet.at[i, 'departure_h'])
-        for i in range(n)
-    ], dtype=bool)
+    prev_connected = np.array(
+        [
+            _is_connected(SIM_START_H, fleet.at[i, "arrival_h"], fleet.at[i, "departure_h"])
+            for i in range(n)
+        ],
+        dtype=bool,
+    )
     
     for slot in range(24):
         h = (SIM_START_H + slot) % 24
         for i in range(n):
-            arr = fleet.at[i, 'arrival_h']
-            dep = fleet.at[i, 'departure_h']
+            arr = fleet.at[i, "arrival_h"]
+            dep = fleet.at[i, "departure_h"]
             connected = _is_connected(h, arr, dep)
 
-            # Reconnection event: EV just returned from a trip.
-            # Reset SoC to soc_arrival (post-driving, partially depleted).
-            # Without this, EVs stay at SOC_MAX all day and show zero
-            # charging demand in the evening (physically wrong).
+            # Apply commute energy on transitions.
+            if prev_connected[i] and not connected:
+                _apply_commute_energy(fleet, i, fleet.at[i, "commute_kwh_leg"])
             if connected and not prev_connected[i]:
-                fleet.at[i, 'soc_current'] = fleet.at[i, 'soc_arrival']
+                _apply_commute_energy(fleet, i, fleet.at[i, "commute_kwh_leg"])
 
             prev_connected[i] = connected
 
-            soc = fleet.at[i, 'soc_current']
+            soc = fleet.at[i, "soc_current"]
             if connected and soc < SOC_MAX:
                 energy_needed  = (SOC_MAX - soc) * E_BAT
                 energy_charged = min(P_CHARGE * EFFICIENCY, energy_needed)
-                fleet.at[i, 'soc_current'] += energy_charged / E_BAT
-                fleet.at[i, 'soc_current']  = min(fleet.at[i, 'soc_current'], SOC_MAX)
+                fleet.at[i, "soc_current"] += energy_charged / E_BAT
+                fleet.at[i, "soc_current"]  = min(fleet.at[i, "soc_current"], SOC_MAX)
                 total_power[slot] += P_CHARGE
 
     return total_power
 
 
-def simulate_v2g(fleet: pd.DataFrame, v_pu_profile: np.ndarray,
-                 pv_surplus: np.ndarray) -> np.ndarray:
+def simulate_v2g(
+    fleet: pd.DataFrame,
+    v_pu_profile: np.ndarray,
+    pv_surplus: np.ndarray,
+) -> np.ndarray:
     """
     Smart V2G: each EV charges/discharges based on bus voltage and PV surplus.
 
@@ -129,52 +152,72 @@ def simulate_v2g(fleet: pd.DataFrame, v_pu_profile: np.ndarray,
     Returns net fleet power [kW] (24,): positive = draw, negative = injection.
     """
     fleet = _precharge_to_sim_start(fleet)
-    total_power    = np.zeros(24)
+    total_power = np.zeros(24)
     n = len(fleet)
-    prev_connected = np.array([
-        _is_connected(SIM_START_H, fleet.at[i, 'arrival_h'], fleet.at[i, 'departure_h'])
-        for i in range(n)
-    ], dtype=bool)
+    prev_home_connected = np.array(
+        [
+            _is_connected(SIM_START_H, fleet.at[i, "arrival_h"], fleet.at[i, "departure_h"])
+            for i in range(n)
+        ],
+        dtype=bool,
+    )
+    prev_work_connected = np.array(
+        [_is_connected_work(SIM_START_H) for _ in range(n)],
+        dtype=bool,
+    )
     
     for slot in range(24):
         h = (SIM_START_H + slot) % 24
         v = v_pu_profile[slot]
         ps = pv_surplus[slot]
         for i in range(n):
-            arr = fleet.at[i, 'arrival_h']
-            dep = fleet.at[i, 'departure_h']
-            connected = _is_connected(h, arr, dep)
+            arr = fleet.at[i, "arrival_h"]
+            dep = fleet.at[i, "departure_h"]
+            connected_home = _is_connected(h, arr, dep)
+            connected_work = _is_connected_work(h)
+            connected = connected_home or connected_work
 
-            # Reset SoC on reconnection (same logic as G2V)
-            if connected and not prev_connected[i]:
-                fleet.at[i, 'soc_current'] = fleet.at[i, 'soc_arrival']
+            # Apply commute energy on transitions.
+            if prev_home_connected[i] and not connected_home:
+                _apply_commute_energy(fleet, i, fleet.at[i, "commute_kwh_leg"])
+            if prev_work_connected[i] and not connected_work:
+                _apply_commute_energy(fleet, i, fleet.at[i, "commute_kwh_leg"])
 
-            prev_connected[i] = connected
+            prev_home_connected[i] = connected_home
+            prev_work_connected[i] = connected_work
 
             if not connected:
                 continue
 
-            soc = fleet.at[i, 'soc_current']
+            soc = fleet.at[i, "soc_current"]
 
-            if v > 1.03 and soc < SOC_MAX:
-                p = P_CHARGE
-                fleet.at[i, 'soc_current'] += (p * EFFICIENCY) / E_BAT
-            elif v < 0.97 and soc > SOC_MIN + 0.1:
-                p = -P_DISCHARGE
-                fleet.at[i, 'soc_current'] -= P_DISCHARGE / (E_BAT * EFFICIENCY)
-            else:
-                # Within acceptable voltage band: keep normal charging behavior
-                if soc < SOC_MAX:
-                    if ps > 0:
-                        p = min(P_CHARGE, ps / N_EV * 10)
-                    else:
-                        p = P_CHARGE
-                    fleet.at[i, 'soc_current'] += (p * EFFICIENCY) / E_BAT
+            if connected_work and not connected_home:
+                # PV-driven charging only during work hours.
+                if ps > 0 and soc < SOC_MAX:
+                    p = min(P_CHARGE, ps / N_EV * 10)
+                    fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
                 else:
                     p = 0
+            else:
+                if v > 1.03 and soc < SOC_MAX:
+                    p = P_CHARGE
+                    fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                elif v < 0.97 and soc > SOC_MIN + 0.1:
+                    p = -P_DISCHARGE
+                    fleet.at[i, "soc_current"] -= P_DISCHARGE / (E_BAT * EFFICIENCY)
+                else:
+                    # Within acceptable voltage band: keep normal charging behavior
+                    if soc < SOC_MAX:
+                        if ps > 0:
+                            p = min(P_CHARGE, ps / N_EV * 10)
+                        else:
+                            p = P_CHARGE
+                        fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                    else:
+                        p = 0
 
-            fleet.at[i, 'soc_current'] = np.clip(
-                fleet.at[i, 'soc_current'], SOC_MIN, SOC_MAX
+            fleet.at[i, "soc_current"] = np.clip(
+                fleet.at[i, "soc_current"], SOC_MIN, SOC_MAX
             )
             total_power[slot] += p
 
