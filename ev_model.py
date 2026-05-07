@@ -14,6 +14,9 @@ EFFICIENCY   = 0.92      # round-trip charge/discharge efficiency
 SIM_START_H  = 6         # simulation starts at 06:00
 WORK_START_H = 9         # work connection window start
 WORK_END_H   = 17        # work connection window end (exclusive)
+V_HIGH      = 1.04   # overvoltage threshold
+V_LOW       = 0.96   # undervoltage threshold
+V_DEADBAND  = 0.005  # hysteresis: do not switch modes near thresholds
 
 
 def generate_fleet(seed=42):
@@ -91,7 +94,7 @@ def _apply_commute_energy(fleet: pd.DataFrame, i: int, kwh: float) -> None:
     fleet.at[i, "soc_current"] = float(np.clip(soc, SOC_MIN, SOC_MAX))
 
 
-def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
+def simulate_g2v(fleet: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     """
     Uncontrolled G2V: every EV charges at full power as soon as it arrives.
 
@@ -103,7 +106,8 @@ def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
     - This produces the realistic evening charging peak at 18-20.
     """
     fleet = _precharge_to_sim_start(fleet)
-    total_power   = np.zeros(24)
+    total_power = np.zeros(24)
+    soc_profile = np.zeros(24)
     n = len(fleet)
     prev_connected = np.array(
         [
@@ -136,14 +140,16 @@ def simulate_g2v(fleet: pd.DataFrame) -> np.ndarray:
                 fleet.at[i, "soc_current"]  = min(fleet.at[i, "soc_current"], SOC_MAX)
                 total_power[slot] += P_CHARGE
 
-    return total_power
+        soc_profile[slot] = float(fleet["soc_current"].mean())
+
+    return total_power, soc_profile
 
 
 def simulate_v2g(
     fleet: pd.DataFrame,
     v_pu_profile: np.ndarray,
     pv_surplus: np.ndarray,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Smart V2G: each EV charges/discharges based on bus voltage and PV surplus.
 
@@ -153,6 +159,7 @@ def simulate_v2g(
     """
     fleet = _precharge_to_sim_start(fleet)
     total_power = np.zeros(24)
+    soc_profile = np.zeros(24)
     n = len(fleet)
     prev_home_connected = np.array(
         [
@@ -165,16 +172,27 @@ def simulate_v2g(
         [_is_connected_work(SIM_START_H) for _ in range(n)],
         dtype=bool,
     )
+    prev_mode = np.array(["idle"] * n, dtype=object)
     
     for slot in range(24):
         h = (SIM_START_H + slot) % 24
         v = v_pu_profile[slot]
         ps = pv_surplus[slot]
+        connected_home_flags = np.zeros(n, dtype=bool)
+        connected_work_flags = np.zeros(n, dtype=bool)
+
         for i in range(n):
             arr = fleet.at[i, "arrival_h"]
             dep = fleet.at[i, "departure_h"]
-            connected_home = _is_connected(h, arr, dep)
-            connected_work = _is_connected_work(h)
+            connected_home_flags[i] = _is_connected(h, arr, dep)
+            connected_work_flags[i] = _is_connected_work(h)
+
+        connected_flags = connected_home_flags | connected_work_flags
+        n_connected = int(connected_flags.sum())
+
+        for i in range(n):
+            connected_home = connected_home_flags[i]
+            connected_work = connected_work_flags[i]
             connected = connected_home or connected_work
 
             # Apply commute energy on transitions.
@@ -194,34 +212,51 @@ def simulate_v2g(
             if connected_work and not connected_home:
                 # PV-driven charging only during work hours.
                 if ps > 0 and soc < SOC_MAX:
-                    p = min(P_CHARGE, ps / N_EV * 10)
+                    p = min(P_CHARGE * 0.6, ps / max(n_connected, 1))
                     fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                    prev_mode[i] = "charge"
                 else:
                     p = 0
+                    prev_mode[i] = "idle"
             else:
-                if v > 1.03 and soc < SOC_MAX:
+                if prev_mode[i] == "charge" and v >= V_HIGH - V_DEADBAND and soc < SOC_MAX:
                     p = P_CHARGE
                     fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
-                elif v < 0.97 and soc > SOC_MIN + 0.1:
+                    mode = "charge"
+                elif prev_mode[i] == "discharge" and v <= V_LOW + V_DEADBAND and soc > SOC_MIN + 0.1:
                     p = -P_DISCHARGE
                     fleet.at[i, "soc_current"] -= P_DISCHARGE / (E_BAT * EFFICIENCY)
+                    mode = "discharge"
+                elif v > V_HIGH and soc < SOC_MAX:
+                    p = P_CHARGE
+                    fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                    mode = "charge"
+                elif v < V_LOW and soc > SOC_MIN + 0.1:
+                    p = -P_DISCHARGE
+                    fleet.at[i, "soc_current"] -= P_DISCHARGE / (E_BAT * EFFICIENCY)
+                    mode = "discharge"
+                elif ps > 0 and soc < SOC_MAX:
+                    p = min(P_CHARGE * 0.6, ps / max(n_connected, 1))
+                    fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                    mode = "charge"
+                elif soc < SOC_MAX:
+                    p = P_CHARGE * 0.4
+                    fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
+                    mode = "charge"
                 else:
-                    # Within acceptable voltage band: keep normal charging behavior
-                    if soc < SOC_MAX:
-                        if ps > 0:
-                            p = min(P_CHARGE, ps / N_EV * 10)
-                        else:
-                            p = P_CHARGE
-                        fleet.at[i, "soc_current"] += (p * EFFICIENCY) / E_BAT
-                    else:
-                        p = 0
+                    p = 0
+                    mode = "idle"
+
+                prev_mode[i] = mode
 
             fleet.at[i, "soc_current"] = np.clip(
                 fleet.at[i, "soc_current"], SOC_MIN, SOC_MAX
             )
             total_power[slot] += p
 
-    return total_power
+        soc_profile[slot] = float(fleet["soc_current"].mean())
+
+    return total_power, soc_profile
 
 
 if __name__ == "__main__":

@@ -110,18 +110,18 @@ def run_scenario(penetration: float,
         return voltages_24h, loading_24h, ev_kw_24h
 
     if strategy == 'G2V':
-        ev_total_kw = simulate_g2v(fleet)
+        ev_total_kw, soc_profile = simulate_g2v(fleet)
         voltages_24h, loading_24h, ev_kw_24h = _run_power_flow(ev_total_kw)
     else:
         # Pass 1: run G2V to get a realistic voltage profile
-        ev_g2v_kw = simulate_g2v(fleet.copy())
+        ev_g2v_kw, _ = simulate_g2v(fleet.copy())
         voltages_ref, _, _ = _run_power_flow(ev_g2v_kw)
         v_profile = np.nanmean(voltages_ref, axis=1)
         if np.isnan(v_profile).all():
             v_profile = np.ones(24)
 
         # Pass 2: run V2G with the measured voltage profile
-        ev_total_kw = simulate_v2g(fleet.copy(), v_profile, pv_surplus)
+        ev_total_kw, soc_profile = simulate_v2g(fleet.copy(), v_profile, pv_surplus)
         voltages_24h, loading_24h, ev_kw_24h = _run_power_flow(ev_total_kw)
 
     return {
@@ -131,6 +131,7 @@ def run_scenario(penetration: float,
         'ev_kw'       : ev_kw_24h,           # (24,)
         'voltages'    : voltages_24h,         # (24, 33)
         'line_loading': loading_24h,          # (24, 37)
+        'soc_profile' : soc_profile,          # (24,)
     }
 
 

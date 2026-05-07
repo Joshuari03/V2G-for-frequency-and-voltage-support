@@ -34,9 +34,11 @@ The logic uses two signals:
 Behavior:
 - During work hours (09:00-17:00): charge only if there is PV surplus, otherwise stay idle.
 - Outside work hours:
-  - If voltage is high (>1.03) and SOC is not full: charge.
-  - If voltage is low (<0.97) and SOC is above the safety threshold: discharge to the grid (V2G).
-  - Otherwise follow normal behavior, prioritizing charging when PV surplus exists.
+  - If voltage is high (>1.04) and SOC is not full: charge at full power.
+  - If voltage is low (<0.96) and SOC is above the safety threshold: discharge to the grid (V2G).
+  - If PV surplus exists and SOC is not full: charge proportionally (shared across connected EVs).
+  - Otherwise charge slowly at 0.3 * P_CHARGE to smooth the evening peak.
+- A deadband (0.005 p.u.) and a per-EV mode memory reduce rapid switching near thresholds.
 - SOC is always kept within [SOC_MIN, SOC_MAX].
 
 ## PV model (pv_model.py)
@@ -61,5 +63,5 @@ Behavior:
 
 ## Outputs
 - CSV files with metrics and voltage profiles.
-- Plots for EV load, voltage profiles, heatmaps, etc.
+- Plots for EV load, voltage profiles, heatmaps, and the average SOC profile.
 - All files are saved with suffix _2500kW_min40soc.

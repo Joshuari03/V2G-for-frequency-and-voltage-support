@@ -10,6 +10,7 @@ Figures produced:
 - pv_and_load_2500kW_min40soc.png
 - total_load_curves_2500kW_min40soc.png
 - ev_delta_2500kW_min40soc.png
+- soc_profile_2500kW_min40soc.png
 
 All figures saved to results/.
 """
@@ -396,6 +397,45 @@ def plot_ev_delta(results: list, sim_start_h: int = 6):
     print("  Saved: results/ev_delta_2500kW_min40soc.png")
 
 
+# Figure 8: SOC profile
+
+def plot_soc_profile(results: list, sim_start_h: int = 6):
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
+    xlabels = _time_labels(sim_start_h)
+    slots = np.arange(24)
+
+    for ax, pen in zip(axes, [0.2, 0.5, 0.8]):
+        for strat in ["G2V", "V2G"]:
+            r = _find_result(results, pen, strat)
+            if r is None:
+                continue
+            soc = r.get("soc_profile")
+            if soc is None:
+                continue
+            ax.plot(
+                slots,
+                soc * 100.0,
+                color=COLORS_STRAT[strat],
+                linestyle=LINESTYLES[strat],
+                linewidth=2,
+                label=strat,
+            )
+
+        ax.set_title(f"EV penetration {int(pen * 100)}%")
+        ax.set_xticks(slots[::3])
+        ax.set_xticklabels(xlabels[::3], rotation=45, ha="right")
+        ax.set_xlabel("Hour")
+        ax.set_ylabel("Average SOC [%]")
+        ax.set_ylim(30, 100)
+        ax.legend(fontsize=8)
+
+    fig.suptitle("Average SOC Profile - G2V vs V2G (PV 2500 kW, SOC min 40%)", fontsize=12, y=1.02)
+    plt.tight_layout()
+    plt.savefig("results/soc_profile_2500kW_min40soc.png", bbox_inches="tight")
+    plt.close()
+    print("  Saved: results/soc_profile_2500kW_min40soc.png")
+
+
 # Master call
 
 def plot_all(results: list, pv_sim: np.ndarray, base_load_total_mw: np.ndarray, sim_start_h: int = 6):
@@ -407,4 +447,5 @@ def plot_all(results: list, pv_sim: np.ndarray, base_load_total_mw: np.ndarray, 
     plot_pv_and_load(pv_sim, base_load_total_mw, sim_start_h)
     plot_total_load_curves(results, base_load_total_mw, sim_start_h)
     plot_ev_delta(results, sim_start_h)
+    plot_soc_profile(results, sim_start_h)
     print("All figures saved to results/")
