@@ -426,6 +426,7 @@ def plot_soc_profile(results: list, sim_start_h: int = 6):
         ax.set_xticklabels(xlabels[::3], rotation=45, ha="right")
         ax.set_xlabel("Hour")
         ax.set_ylabel("Average SOC [%]")
+        ax.axhline(40, color="orange", linestyle="--", linewidth=1.5, label="SOC min 40%")
         ax.set_ylim(30, 100)
         ax.legend(fontsize=8)
 
